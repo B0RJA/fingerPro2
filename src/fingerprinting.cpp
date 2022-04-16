@@ -214,6 +214,12 @@ Rcpp::DataFrame unmix_c(SEXP sources, SEXP samples, int trials=100, int iter=100
 	best.w = (double*) malloc( nsource * sizeof(double) );
 	best.gof1 = 0.0;
 	best.gof2 = 0.0;
+	
+	// central solution
+	double *cw = (double*) malloc( nsource * sizeof(double) );
+	// corrected mixture
+	double *cm = (double*) malloc( vars * sizeof(double) );
+
 	// Compute maximum values to normalize
 	for(i = 0 ; i < vars ; i++ )
 	{
@@ -260,7 +266,7 @@ Rcpp::DataFrame unmix_c(SEXP sources, SEXP samples, int trials=100, int iter=100
 	for( i = 0 ; i < points ; i++ )
 	{
 		// repeat iter times to get probability distribution
-		for( ii = 0 ; ii < iter ; ii++ )
+		for( ii = -1 ; ii < iter ; ii++ )
 		{
 			// screen
 //			printf("\r                                            \r");
@@ -273,25 +279,33 @@ Rcpp::DataFrame unmix_c(SEXP sources, SEXP samples, int trials=100, int iter=100
 
 			p.increment();
 		
-			if(ii == 1 || ii == 2)
+			if(ii == -1 || ii == 1 || ii == 2)
 			{
+				// keep original mixture
 				for( k = 0 ; k < vars ; k++ )
 				{
-					for( l = 0 ; l < nsource ; l++ )
-					{
-						source_c[l][k] = source[l][k];
-					}
+					cm[k] = point[i][k];
 				}
 			}
-			// compute corrected sources
 			else
 			{
+				// compute corrected sources
 				for( k = 0 ; k < vars ; k++ )
 				{
 					for( l = 0 ; l < nsource ; l++ )
 					{
 						source_c[l][k] = correct(source[l][k], source_d[l][k], source_n[l]);
 					}
+				}
+				// compute corrected mixture
+				for( k = 0 ; k < vars ; k++ )
+				{
+					sum = 0.0;
+					for( l = 0 ; l < nsource ; l++ )
+					{
+						sum = sum + source_c[l][k] * cw[l];
+					}
+					cm[k] = sum;
 				}
 			}
 
@@ -327,16 +341,16 @@ Rcpp::DataFrame unmix_c(SEXP sources, SEXP samples, int trials=100, int iter=100
 					for( l = 0 ; l < nsource ; l++ )
 					{
 						// Non corrected mean
-						//sum = sum + source[l][k] * try1[l];
+						sum = sum + source[l][k] * try1[l];
 
 						// Corrected mean
-						sum = sum + source_c[l][k] * try1[l];
+						//sum = sum + source_c[l][k] * try1[l];
 					}
 					// GOF1
-					gof1 = gof1 + fabs( point[i][k] - sum ) / ( max[k] - min[k] );
+					gof1 = gof1 + fabs( cm[k] - sum ) / ( max[k] - min[k] );
 
 					// GOF2
-					gof2 = gof2 + ( point[i][k] - sum ) * ( point[i][k] - sum ) / ( max[k] - min[k] ) / ( max[k] - min[k] );
+					gof2 = gof2 + ( cm[k] - sum ) * ( cm[k] - sum ) / ( max[k] - min[k] ) / ( max[k] - min[k] );
 				}
 				gof1 = 1.0 - gof1 / (double) vars;
 				gof2 = 1.0 - gof2 / (double) vars;
@@ -354,12 +368,23 @@ Rcpp::DataFrame unmix_c(SEXP sources, SEXP samples, int trials=100, int iter=100
 
 			}
 
-			// print average and standar deviation values in the top
-			as<CharacterVector>(myList[0])[i*iter+ii] = i + 1;
-			as<CharacterVector>(myList[1])[i*iter+ii] = best.gof1;
-			for( j = 0 ; j < nsource ; j++ )
+			if(ii == -1)
 			{
-				as<CharacterVector>(myList[2+j])[i*iter+ii] = best.w[j];
+				// store central solution
+				for( j = 0 ; j < nsource ; j++ )
+				{
+					cw[j] = best.w[j];
+				}
+			}
+			else
+			{
+				// print average and standar deviation values in the top
+				as<CharacterVector>(myList[0])[i*iter+ii] = i + 1;
+				as<CharacterVector>(myList[1])[i*iter+ii] = best.gof1;
+				for( j = 0 ; j < nsource ; j++ )
+				{
+					as<CharacterVector>(myList[2+j])[i*iter+ii] = best.w[j];
+				}
 			}
 		}
 	}
@@ -1532,4 +1557,3 @@ Rcpp::DataFrame triangles_virtual_c(SEXP sources, SEXP samples, int tracer=0, in
 	Rcpp::DataFrame dfout(myList);
 	return dfout;
 }
-
