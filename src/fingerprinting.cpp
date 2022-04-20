@@ -329,7 +329,8 @@ Rcpp::DataFrame unmix_c(SEXP sources, SEXP samples, int trials=100, int iter=100
 				// explore unphysical solutions to then discard
 				for( k = 0 ; k < nsource ; k++ )
 				{
-					try1[k] = try1[k] * 2.0 - 1.0 / (double)nsource;
+					//try1[k] = try1[k] * 2.0 - 1.0 / (double)nsource;
+					try1[k] = try1[k] * 4.0 - 3.0 / (double)nsource;
 				}
 
 				// measure error
