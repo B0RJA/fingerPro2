@@ -117,3 +117,167 @@ unmix <- function(data, samples = 100L, iter = 100L, Means = F, seed = 123456L){
     
   })
 }
+
+              unmix_R_legacy <- function(source, mixture, iter = 2000, seed = 123456)
+{
+	set.seed(seed)
+
+	snames <- source[,1]
+
+	source <- data.matrix(source[-1])
+	mixture <- data.matrix(mixture[-1])
+	
+	# normalize
+	cols <- (ncol(source)-1)/2
+	for (col in c(1:cols))
+	{
+		mx <- max(source[,col]+source[,cols+col])
+		mn <- min(source[,col]-source[,cols+col])
+		source[,col] <- ( source[,col] - mn ) / ( mx - mn )
+		source[,cols+col] <- source[,cols+col] / ( mx - mn )
+		mixture[,col] <- ( mixture[,col] - mn ) / ( mx - mn )
+	}
+	
+	nsource <- nrow(source)
+	ntracer <- (ncol(source)-1)/2
+
+	r <- matrix(, nrow = iter, ncol = nsource+2)
+
+	for (i in c(1:iter))
+	{
+		y <- c()
+		x <- matrix(, nrow = ntracer, ncol = nsource-1)
+
+		if(i==2 || i==3)
+		{
+			for (j in c(1:ntracer))
+			{
+				y <- c(y, mixture[1,j][[1]]-source[nsource,j])
+				for (k in c(1:(nsource-1)))
+				{
+					x[j, k] <- source[k,j]-source[nsource,j]
+				}
+			}
+		}
+		else
+		{
+			ls <- c()
+			for (j in c(1:ntracer))
+			{
+				x1 <- rt(1, source[nsource, ntracer*2+1]) / sqrt(source[nsource, ntracer*2+1])
+				ls <- c(ls, source[nsource, j] + source[nsource, ntracer+j] * x1)
+			}
+				
+			for (j in c(1:ntracer))
+			{
+				y <- c(y, mixture[1,j][[1]]-ls[j])
+				for (k in c(1:(nsource-1)))
+				{
+					x1 <- rt(1, source[k, ntracer*2+1]) / sqrt(source[k, ntracer*2+1])
+					x[j, k] <- (source[k,j] + source[k,ntracer+j] * x1)-ls[j]
+				}
+			}
+		}
+
+		# least squares method
+		model <- lm.fit(x, y)
+		w <- as.vector(coef(model))
+		w <- c(1, 1.0, w, 1-sum(w))
+		
+		r[i, ] <- w
+	}
+	
+	r <- as.data.frame(r)
+	colnames(r) <- c('id', 'gof', paste( "w.", snames[c(1:nsource)], sep=""))
+	return(r)
+}
+
+
+unmix_R <- function(source, mixture, iter = 2000, seed = 123456)
+{
+	set.seed(seed)
+
+	snames <- source[,1]
+
+	source <- data.matrix(source[-1])
+	mixture <- data.matrix(mixture[-1])
+	
+	# normalize
+	cols <- (ncol(source)-1)/2
+	for (col in c(1:cols))
+	{
+		mx <- max(source[,col]+source[,cols+col])
+		mn <- min(source[,col]-source[,cols+col])
+		source[,col] <- ( source[,col] - mn ) / ( mx - mn )
+		source[,cols+col] <- source[,cols+col] / ( mx - mn )
+		mixture[,col] <- ( mixture[,col] - mn ) / ( mx - mn )
+	}
+	
+	nsource <- nrow(source)
+	ntracer <- (ncol(source)-1)/2
+
+	r <- matrix(, nrow = iter, ncol = nsource+2)
+	
+	# compute central solution
+	y <- c()
+	x <- matrix(, nrow = ntracer, ncol = nsource-1)
+	for (j in c(1:ntracer))
+	{
+		y <- c(y, mixture[1,j][[1]]-source[nsource,j])
+		for (k in c(1:(nsource-1)))
+		{
+			x[j, k] <- source[k,j]-source[nsource,j]
+		}
+	}
+	# least squares method
+	model <- lm.fit(x, y)
+	cw <- as.vector(coef(model))
+	cw <- c(cw, 1-sum(cw))
+
+	for (i in c(1:iter))
+	{
+		vm <- c(1:ntracer)*0		
+		if(i==2 || i==3)
+		{
+			# use measured mixture
+			for (j in c(1:ntracer))
+			{
+				vm[j] <- mixture[1,j][[1]]
+			}
+		}
+		else
+		{
+			# compute virtual mixture
+			for (j in c(1:ntracer))
+			{
+				vm[j] <- 0
+				for (k in c(1:nsource))
+				{
+					x1 <- rt(1, source[k, ntracer*2+1]) / sqrt(source[k, ntracer*2+1])
+					vm[j] <- vm[j] + cw[k] * (source[k,j] + source[k,ntracer+j] * x1)
+				}
+			}
+		}
+
+		y <- c()
+		x <- matrix(, nrow = ntracer, ncol = nsource-1)
+		for (j in c(1:ntracer))
+		{
+			y <- c(y, vm[j]-source[nsource,j])
+			for (k in c(1:(nsource-1)))
+			{
+				x[j, k] <- source[k,j]-source[nsource,j]
+			}
+		}
+		# least squares method
+		model <- lm.fit(x, y)
+		w <- as.vector(coef(model))
+		w <- c(1, 1.0, w, 1-sum(w))
+
+		r[i, ] <- w
+	}
+	
+	r <- as.data.frame(r)
+	colnames(r) <- c('id', 'gof', paste( "w.", snames[c(1:nsource)], sep=""))
+	return(r)
+}
