@@ -118,7 +118,7 @@ unmix <- function(data, samples = 100L, iter = 100L, Means = F, seed = 123456L){
   })
 }
 
-              unmix_R_legacy <- function(source, mixture, iter = 2000, seed = 123456)
+unmix_R_legacy <- function(source, mixture, iter = 2000, seed = 123456)
 {
 	set.seed(seed)
 
@@ -143,6 +143,8 @@ unmix <- function(data, samples = 100L, iter = 100L, Means = F, seed = 123456L){
 
 	r <- matrix(, nrow = iter, ncol = nsource+2)
 
+	csource <- matrix(, nrow = nsource, ncol = ntracer)
+
 	for (i in c(1:iter))
 	{
 		y <- c()
@@ -158,6 +160,13 @@ unmix <- function(data, samples = 100L, iter = 100L, Means = F, seed = 123456L){
 					x[j, k] <- source[k,j]-source[nsource,j]
 				}
 			}
+			for (j in c(1:ntracer))
+			{
+				for (k in c(1:nsource))
+				{
+					csource[k,j] <- source[k,j]
+				}
+			}
 		}
 		else
 		{
@@ -165,16 +174,18 @@ unmix <- function(data, samples = 100L, iter = 100L, Means = F, seed = 123456L){
 			for (j in c(1:ntracer))
 			{
 				x1 <- rt(1, source[nsource, ntracer*2+1]) / sqrt(source[nsource, ntracer*2+1])
-				ls <- c(ls, source[nsource, j] + source[nsource, ntracer+j] * x1)
+				csource[nsource, j] <- source[nsource, j] + source[nsource, ntracer+j] * x1
+				ls <- c(ls, csource[nsource, j])
 			}
 				
 			for (j in c(1:ntracer))
 			{
-				y <- c(y, mixture[1,j][[1]]-ls[j])
+				y <- c(y, mixture[1,j][[1]] - ls[j])
 				for (k in c(1:(nsource-1)))
 				{
 					x1 <- rt(1, source[k, ntracer*2+1]) / sqrt(source[k, ntracer*2+1])
-					x[j, k] <- (source[k,j] + source[k,ntracer+j] * x1)-ls[j]
+					csource[k,j] <- source[k,j] + source[k,ntracer+j] * x1
+					x[j, k] <- csource[k,j] - ls[j]
 				}
 			}
 		}
@@ -182,7 +193,21 @@ unmix <- function(data, samples = 100L, iter = 100L, Means = F, seed = 123456L){
 		# least squares method
 		model <- lm.fit(x, y)
 		w <- as.vector(coef(model))
-		w <- c(1, 1.0, w, 1-sum(w))
+		w <- c(w, 1-sum(w))
+		
+		gof <- c()
+		for (j in c(1:ntracer))
+		{
+			x1 <- 0.0
+			for (k in c(1:nsource))
+			{
+				x1 <- x1 + w[k] * csource[k,j]
+			}
+			gof <- c(gof, (mixture[1,j][[1]]-x1)^2)
+		}
+		gof <- 1.0 - mean(gof)
+		
+		w <- c(1, gof, w)
 		
 		r[i, ] <- w
 	}
@@ -217,7 +242,7 @@ unmix_R <- function(source, mixture, iter = 2000, seed = 123456)
 	ntracer <- (ncol(source)-1)/2
 
 	r <- matrix(, nrow = iter, ncol = nsource+2)
-	
+
 	# compute central solution
 	y <- c()
 	x <- matrix(, nrow = ntracer, ncol = nsource-1)
@@ -254,7 +279,7 @@ unmix_R <- function(source, mixture, iter = 2000, seed = 123456)
 				for (k in c(1:nsource))
 				{
 					x1 <- rt(1, source[k, ntracer*2+1]) / sqrt(source[k, ntracer*2+1])
-					vm[j] <- vm[j] + cw[k] * (source[k,j] + source[k,ntracer+j] * x1)
+					vm[j] <- vm[j] + cw[k] * ( source[k,j] + source[k,ntracer+j] * x1 )
 				}
 			}
 		}
@@ -272,7 +297,21 @@ unmix_R <- function(source, mixture, iter = 2000, seed = 123456)
 		# least squares method
 		model <- lm.fit(x, y)
 		w <- as.vector(coef(model))
-		w <- c(1, 1.0, w, 1-sum(w))
+		w <- c(w, 1-sum(w))
+		
+		gof <- c()
+		for (j in c(1:ntracer))
+		{
+			x1 <- 0.0
+			for (k in c(1:nsource))
+			{
+				x1 <- x1 + w[k] * source[k,j]
+			}
+			gof <- c(gof, (vm[j]-x1)^2)
+		}
+		gof <- 1.0 - mean(gof)
+		
+		w <- c(1, gof, w)
 
 		r[i, ] <- w
 	}
@@ -281,3 +320,4 @@ unmix_R <- function(source, mixture, iter = 2000, seed = 123456)
 	colnames(r) <- c('id', 'gof', paste( "w.", snames[c(1:nsource)], sep=""))
 	return(r)
 }
+
